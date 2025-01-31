@@ -1,20 +1,24 @@
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
-from supabase import create_client
-import hashlib
 import os
-
-app = FastAPI()
+from supabase import create_client
 
 # Load Supabase credentials from Railway environment variables
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+
+# Debugging: Check if variables are being loaded
+if not SUPABASE_URL or not SUPABASE_KEY:
+    raise Exception("❌ ERROR: SUPABASE_URL or SUPABASE_KEY is missing!")
+
+# ✅ Correct way to initialize Supabase client
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-if not SUPABASE_URL or not SUPABASE_KEY:
-    raise Exception("Missing Supabase credentials")
+from fastapi import FastAPI
 
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+app = FastAPI()
+
+@app.get("/")
+async def root():
+    return {"message": "FastAPI is running on Railway and connected to Supabase!"}
 
 
 # Define the Job schema for incoming job data

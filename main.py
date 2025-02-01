@@ -118,7 +118,7 @@ async def process_job(request: Request):
     # ✅ Extract and Normalize Job Data
     job_id = job.get("job_id") or job.get("id") or job.get("job_link") or job.get("jobUrl")
 
-    # ✅ Fix source extraction (Ensures it's always present)
+    # ✅ Ensure source is always set
     source = job.get("source") or job.get("platform") or "Unknown"
 
     job_title = job.get("job_title") or job.get("title") or job.get("jobTitle") or job.get("position")
@@ -136,7 +136,13 @@ async def process_job(request: Request):
     if not company_name or not isinstance(company_name, str) or company_name.strip() == "":
         return {"error": "Missing company_name, job cannot be inserted."}
 
-    job_url = job.get("job_url") or job.get("job_link") or job.get("jobUrl") or job.get("jobLink")
+    # ✅ Fix job_url extraction (Ensures it's always present)
+    job_url = job.get("job_url") or job.get("job_link") or job.get("jobUrl") or job.get("jobLink") or job.get("url")
+
+    # 🚨 Prevent inserting null `job_url`
+    if not job_url or not isinstance(job_url, str):
+        return {"error": "Missing job_url, job cannot be inserted."}
+
     location = job.get("location") or f"{job.get('location_city', '')}, {job.get('location_state', '')}"
     salary_min = job.get("salary_min") or job.get("compensation", {}).get("min") or job.get("payRange", {}).get("min")
     salary_max = job.get("salary_max") or job.get("compensation", {}).get("max") or job.get("payRange", {}).get("max")
@@ -176,7 +182,7 @@ async def process_job(request: Request):
         "source": source,
         "job_title": job_title,
         "company_id": company_id,
-        "job_url": job_url,
+        "job_url": job_url,  # ✅ Always present now
         "location_city": location_city,
         "location_state": location_state,
         "location_country": location_country,
@@ -190,28 +196,6 @@ async def process_job(request: Request):
 
     supabase.table("jobs").insert(job_data).execute()
     return {"message": "Job stored successfully", "job_id": job_id}
-
-    # ✅ Insert New Job
-    job_data = {
-        "job_id": job_id,
-        "source": source,
-        "job_title": job_title,
-        "company_id": company_id,
-        "job_url": job_url,
-        "location_city": location_city,
-        "location_state": location_state,
-        "location_country": location_country,
-        "salary_min": salary_min,
-        "salary_max": salary_max,
-        "currency": currency,
-        "date_published": date_published,
-        "contact_email": contact_email,
-        "normalized_hash": normalized_hash
-    }
-
-    supabase.table("jobs").insert(job_data).execute()
-    return {"message": "Job stored successfully", "job_id": job_id}
-
 
 
 # ✅ Ensure FastAPI runs on Railway's assigned port

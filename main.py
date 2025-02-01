@@ -169,7 +169,7 @@ async def process_job(request: Request):
     }
 
     supabase.table("jobs").insert(job_data).execute()
-    return {"message": "Job stored successfully", "job_id": job_id}"
+    return {"message": "Job stored successfully", "job_id": job_id}
 
 
 # ✅ Ensure FastAPI runs on Railway's assigned port

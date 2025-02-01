@@ -119,8 +119,19 @@ async def process_job(request: Request):
     job_id = job.get("job_id") or job.get("id") or job.get("job_link") or job.get("jobUrl")
     source = job.get("source")
     job_title = job.get("job_title") or job.get("title") or job.get("jobTitle") or job.get("position")
-    company_name = job.get("company_name") or job.get("company") or job.get("companyName") or job.get("advertiser", {}).get("name")
-    company_website = job.get("company_website") or job.get("company_url") or job.get("companyWebsite") or job.get("advertiser", {}).get("website")
+
+    # ✅ Fix company_name extraction (Handles both string & dict)
+    company = job.get("company") or {}
+    company_name = job.get("company_name") or job.get("company") or job.get("companyName") or company.get("name")
+    company_website = job.get("company_website") or job.get("company_url") or job.get("companyWebsite") or company.get("url")
+
+    # 🚨 Ensure `company_name` is a **string** before calling `.strip()`
+    if isinstance(company_name, dict):
+        company_name = company_name.get("name")  # Extract from dictionary if needed
+
+    if not company_name or not isinstance(company_name, str) or company_name.strip() == "":
+        return {"error": "Missing company_name, job cannot be inserted."}
+
     job_url = job.get("job_url") or job.get("job_link") or job.get("jobUrl") or job.get("jobLink")
     location = job.get("location") or f"{job.get('location_city', '')}, {job.get('location_state', '')}"
     salary_min = job.get("salary_min") or job.get("compensation", {}).get("min") or job.get("payRange", {}).get("min")
@@ -128,10 +139,6 @@ async def process_job(request: Request):
     currency = job.get("currency") or job.get("compensation", {}).get("currency") or "AUD"
     date_published = job.get("date_published") or job.get("date_posted") or job.get("postedDate") or job.get("published")
     contact_email = job.get("contact_email")
-
-    # 🚨 Prevent inserting NULL company_name
-    if not company_name:
-        return {"error": "Missing company_name, job cannot be inserted."}
 
     # ✅ Normalize Location
     location_city, location_state, location_country = normalize_location(location)
@@ -178,6 +185,7 @@ async def process_job(request: Request):
 
     supabase.table("jobs").insert(job_data).execute()
     return {"message": "Job stored successfully", "job_id": job_id}
+
 
 
 # ✅ Ensure FastAPI runs on Railway's assigned port

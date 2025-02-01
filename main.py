@@ -117,11 +117,8 @@ def extract_seek_location(job):
             label = location.get("label", "")
             country_code = location.get("countryCode", "AU")
 
-            # Extract city from seoHierarchy if available
-            seo_hierarchy = location.get("seoHierarchy", [])
-            city = seo_hierarchy[0].get("contextualName", "") if seo_hierarchy else label
-
-            return f"{city}, {country_code}"
+            # Use the label directly, which contains city and state
+            return f"{label}, {country_code}"
 
     return None
 

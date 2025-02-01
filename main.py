@@ -121,7 +121,11 @@ async def process_job(request: Request):
     # ✅ Ensure source is always set
     source = job.get("source") or job.get("platform") or "Unknown"
 
-    job_title = job.get("job_title") or job.get("title") or job.get("jobTitle") or job.get("position")
+    # ✅ Prioritize `shortTitle` when source is LinkedIn
+    if source.lower() == "linkedin":
+        job_title = job.get("shortTitle") or job.get("title") or job.get("job_title") or job.get("jobTitle")
+    else:
+        job_title = job.get("job_title") or job.get("title") or job.get("jobTitle") or job.get("position")
 
     # ✅ Fix company_name extraction (Handles both string & dict)
     company = job.get("company") or {}
@@ -180,9 +184,9 @@ async def process_job(request: Request):
     job_data = {
         "job_id": job_id,
         "source": source,
-        "job_title": job_title,
+        "job_title": job_title,  # ✅ Always prioritizing `shortTitle` for LinkedIn
         "company_id": company_id,
-        "job_url": job_url,  # ✅ Always present now
+        "job_url": job_url,
         "location_city": location_city,
         "location_state": location_state,
         "location_country": location_country,

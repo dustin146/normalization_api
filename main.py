@@ -142,7 +142,6 @@ def extract_seek_location(job: Dict[str, Any]) -> Optional[str]:
 
 
 # --- Main Endpoint ---
-<<<<<<<<<<<<<<  ✨ Codeium Command 🌟 >>>>>>>>>>>>>>>>
 @app.post("/process_job")
 async def process_job(request: Request):
     """
@@ -175,7 +174,6 @@ async def process_job(request: Request):
         logger.error(f"Error processing job: {str(e)}")
 
         raise HTTPException(status_code=500, detail="Internal server error")
-<<<<<<<  fabe5489-15e2-40e5-bae8-1d2be2c909ea  >>>>>>>
 
     # --- Extract essential fields ---
 

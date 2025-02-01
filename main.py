@@ -145,22 +145,13 @@ def extract_seek_location(job: Dict[str, Any]) -> Optional[str]:
 @app.post("/process_job")
 async def process_job(request: Request):
     try:
-        job = await request.json()
-        logger.info(f"Received job: {job}")
-
-        logger.info(f"job.get('job_id'): {job.get('job_id')}")
-        logger.info(f"job.get('id'): {job.get('id')}")
-        logger.info(f"job.get('job_link'): {job.get('job_link')}")
-        logger.info(f"job.get('jobUrl'): {job.get('jobUrl')}")
-
+        data = await request.json()
+        job = data.get("body", {})
 
         job_id = job.get("job_id") or job.get("id") or job.get("job_link") or job.get("jobUrl")
-        logger.info(f"Final extracted job_id: {job_id}")
 
         if not job_id:
-            logger.warning("no job_id found in keys: job_id, id, job_link, jobUrl")
             raise HTTPException(status_code=400, detail="Missing job_id.")
-
 
     except Exception as e:
         logger.error(f"Invalid JSON input: {e}")

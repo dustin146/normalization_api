@@ -109,6 +109,22 @@ def get_or_create_company(company_name, company_website):
     return response.data[0]["company_id"]
 
 
+def extract_seek_location(job):
+    if job.get("sourcePlatform") == "SEEK" and "locations" in job:
+        locations = job["locations"]
+        if locations and isinstance(locations, list):
+            location = locations[0]  # Assume the first location
+            label = location.get("label", "")
+            country_code = location.get("countryCode", "AU")
+
+            # Extract city from seoHierarchy if available
+            seo_hierarchy = location.get("seoHierarchy", [])
+            city = seo_hierarchy[0].get("contextualName", "") if seo_hierarchy else label
+
+            return f"{city}, {country_code}"
+
+    return None
+
 @app.post("/process_job")
 async def process_job(request: Request):
     """Handles raw job postings, normalizes fields, and stores them in Supabase."""
@@ -147,7 +163,16 @@ async def process_job(request: Request):
     if not job_url or not isinstance(job_url, str):
         return {"error": "Missing job_url, job cannot be inserted."}
 
-    location = job.get("location") or f"{job.get('location_city', '')}, {job.get('location_state', '')}"
+    # ✅ Extract location
+    seek_location = extract_seek_location(job)
+    if seek_location:
+        location = seek_location
+    else:
+        location = job.get("location") or f"{job.get('location_city', '')}, {job.get('location_state', '')}"
+
+    # ✅ Normalize Location
+    location_city, location_state, location_country = normalize_location(location)
+
     salary_min = job.get("salary_min") or job.get("compensation", {}).get("min") or job.get("payRange", {}).get("min")
     salary_max = job.get("salary_max") or job.get("compensation", {}).get("max") or job.get("payRange", {}).get("max")
     currency = job.get("currency") or job.get("compensation", {}).get("currency") or "AUD"
@@ -155,8 +180,7 @@ async def process_job(request: Request):
         "published") or job.get("listingDate")
     contact_email = job.get("contact_email")
 
-    # ✅ Normalize Location
-    location_city, location_state, location_country = normalize_location(location)
+
 
     # ✅ Normalize Salary
     salary_min, salary_max, currency = normalize_salary(salary_min, salary_max, currency)

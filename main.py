@@ -183,7 +183,7 @@ async def process_job(request: Request):
     # ✅ Insert New Job
     job_data = {
         "job_id": job_id,
-        "source": source,
+        "source": sourcePlatform,
         "job_title": job_title,  # ✅ Always prioritizing `shortTitle` for LinkedIn
         "company_id": company_id,
         "job_url": job_url,

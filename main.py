@@ -1,7 +1,14 @@
 import os
+import hashlib
+from fastapi import FastAPI
+from pydantic import BaseModel  # ✅ FIX: Import BaseModel
 from supabase import create_client
 
-# Load Supabase credentials from Railway environment variables
+# Load Supabase credentials from a `.env` file for local testing
+from dotenv import load_dotenv
+
+load_dotenv()  # ✅ Load environment variables from .env
+
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 
@@ -12,13 +19,11 @@ if not SUPABASE_URL or not SUPABASE_KEY:
 # ✅ Correct way to initialize Supabase client
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-from fastapi import FastAPI
-
 app = FastAPI()
 
 @app.get("/")
 async def root():
-    return {"message": "FastAPI is running on Railway and connected to Supabase!"}
+    return {"message": "FastAPI is running locally and connected to Supabase!"}
 
 
 # Define the Job schema for incoming job data
@@ -38,40 +43,7 @@ class Job(BaseModel):
     contact_email: str | None = None
 
 
-# Helper function: Normalize text for deduplication
-def normalize_text(text):
-    return ''.join(e for e in text.lower() if e.isalnum())
-
-
-# Helper function: Generate job hash for deduplication
-def generate_job_hash(job: Job):
-    base_string = f"{normalize_text(job.company_name)}_{normalize_text(job.job_title)}_{normalize_text(job.location_city or '')}"
-    return hashlib.md5(base_string.encode()).hexdigest()
-
-
-# Helper function: Check if job already exists
-def check_duplicate(job_hash):
-    response = supabase.table("jobs").select("job_id").eq("normalized_hash", job_hash).execute()
-    return response.data if response.data else None
-
-
-# API Route: Process & Deduplicate Jobs
-@app.post("/process_job")
-def process_job(job: Job):
-    job_hash = generate_job_hash(job)
-    duplicate = check_duplicate(job_hash)
-
-    if duplicate:
-        supabase.table("job_duplicates").insert({
-            "original_job_id": duplicate[0]['job_id'],
-            "duplicate_job_id": job.job_id,
-            "match_score": 1.0
-        }).execute()
-        return {"message": "Duplicate job detected", "job_id": job.job_id}
-
-    # Insert new job into Supabase
-    job_data = job.dict()
-    job_data["normalized_hash"] = job_hash
-    supabase.table("jobs").insert(job_data).execute()
-
-    return {"message": "Job stored successfully", "job_id": job.job_id}
+if __name__ == "__main__":
+    port = int(os.getenv("PORT", 8000))  # Use Railway's assigned port
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=port)

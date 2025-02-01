@@ -43,6 +43,14 @@ class Job(BaseModel):
     date_published: str
     contact_email: str | None = None
 
+@app.post("/process_job")
+def process_job(job: Job):
+    """Handles job posting requests and stores them in Supabase."""
+    job_data = job.dict()
+    supabase.table("jobs").insert(job_data).execute()
+    return {"message": "Job processed and stored in Supabase.", "job_id": job.job_id}
+
+
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 8000))  # Use Railway's assigned port

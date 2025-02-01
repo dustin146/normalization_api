@@ -119,10 +119,10 @@ async def process_job(request: Request):
     job_id = job.get("job_id") or job.get("id") or job.get("job_link") or job.get("jobUrl")
 
     # ✅ Ensure source is always set
-    source = job.get("source") or job.get("platform") or "Unknown"
+    sourcePlatform = job.get("sourcePlatform") or job.get("platform") or "Unknown"
 
     # ✅ Prioritize `shortTitle` when source is LinkedIn
-    if source.lower() == "linkedin":
+    if sourcePlatform.lower() == "linkedin":
         job_title = job.get("shortTitle") or job.get("title") or job.get("job_title") or job.get("jobTitle")
     else:
         job_title = job.get("job_title") or job.get("title") or job.get("jobTitle") or job.get("position")

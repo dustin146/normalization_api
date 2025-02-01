@@ -22,6 +22,16 @@ app = FastAPI()
 async def root():
     return {"message": "FastAPI is running locally and connected to Supabase!"}
 
+# add an api to fetch stored jobs
+@app.get("/jobs")
+def get_jobs():
+    try:
+        response = supabase.table("jobs").select("*").execute()
+        return response
+    except Exception as e:
+        print("❌ ERROR fetching jobs:", e)
+        return {"error": str(e)}
+
 class Job(BaseModel):
     job_id: str
     source: str

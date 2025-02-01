@@ -142,20 +142,40 @@ def extract_seek_location(job: Dict[str, Any]) -> Optional[str]:
 
 
 # --- Main Endpoint ---
+<<<<<<<<<<<<<<  ✨ Codeium Command 🌟 >>>>>>>>>>>>>>>>
 @app.post("/process_job")
 async def process_job(request: Request):
+    """
+    Process a job object from a webhook event
+    """
     try:
         data = await request.json()
-        job = data.get("body", {})
 
-        job_id = job.get("job_id") or job.get("id") or job.get("job_link") or job.get("jobUrl")
+        job = data.get("body", data)
+
+        job_id = (job.get("job_id") or job.get("id") or
+                  job.get("job_link") or job.get("jobUrl") or
+                  job.get("jobID") or job.get("job_url"))
 
         if not job_id:
             raise HTTPException(status_code=400, detail="Missing job_id.")
 
+        # Log the extracted job_id for debugging
+        logger.info(f"Extracted job_id: {job_id}")
+
+
+    except json.JSONDecodeError as e:
+
+        logger.error(f"JSON Decode Error: {str(e)}")
+
+        raise HTTPException(status_code=400, detail=f"Invalid JSON: {str(e)}")
+
     except Exception as e:
-        logger.error(f"Invalid JSON input: {e}")
-        raise HTTPException(status_code=400, detail="Invalid JSON input.")
+
+        logger.error(f"Error processing job: {str(e)}")
+
+        raise HTTPException(status_code=500, detail="Internal server error")
+<<<<<<<  fabe5489-15e2-40e5-bae8-1d2be2c909ea  >>>>>>>
 
     # --- Extract essential fields ---
 

@@ -99,23 +99,26 @@ def get_or_create_company(company_name: str | None, company_website: str | None)
     return response.data[0]["company_id"]
 
 
-# ✅ Process job route: Normalize raw data before inserting
+from fastapi import Request
+
 @app.post("/process_job")
-def process_job(job: dict):
+async def process_job(request: Request):
     """Handles raw job postings, normalizes fields, and stores them in Supabase."""
 
+    job = await request.json()  # ✅ Read JSON explicitly
+
     # ✅ Extract and Normalize Job Data
-    job_id = job.get("id") or job.get("job_id") or job.get("job_link") or job.get("jobUrl")
+    job_id = job.get("job_id") or job.get("id") or job.get("job_link") or job.get("jobUrl")
     source = job.get("source")
-    job_title = job.get("title") or job.get("jobTitle") or job.get("position")
-    company_name = job.get("company") or job.get("companyName") or job.get("advertiser", {}).get("name")
-    company_website = job.get("company_url") or job.get("companyWebsite") or job.get("advertiser", {}).get("website")
-    job_url = job.get("job_link") or job.get("jobUrl") or job.get("jobLink")
-    location = job.get("location")
-    salary_min = job.get("salary_min") or job.get("compensation", {}).get("min") or job.get("payRange", {}).get("min")
-    salary_max = job.get("salary_max") or job.get("compensation", {}).get("max") or job.get("payRange", {}).get("max")
-    currency = job.get("currency") or job.get("compensation", {}).get("currency") or "AUD"
-    date_published = job.get("date_posted") or job.get("postedDate") or job.get("published")
+    job_title = job.get("job_title") or job.get("title") or job.get("jobTitle") or job.get("position")
+    company_name = job.get("company_name") or job.get("company") or job.get("companyName") or job.get("advertiser", {}).get("name")
+    company_website = job.get("company_website") or job.get("company_url") or job.get("companyWebsite") or job.get("advertiser", {}).get("website")
+    job_url = job.get("job_url") or job.get("job_link") or job.get("jobUrl") or job.get("jobLink")
+    location = job.get("location") or f"{job.get('location_city', '')}, {job.get('location_state', '')}"
+    salary_min = job.get("salary_min")
+    salary_max = job.get("salary_max")
+    currency = job.get("currency") or "AUD"
+    date_published = job.get("date_published") or job.get("date_posted") or job.get("postedDate") or job.get("published")
     contact_email = job.get("contact_email")
 
     # 🚨 Prevent inserting NULL company_name

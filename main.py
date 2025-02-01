@@ -1,4 +1,5 @@
 import os
+import uvicorn
 import hashlib
 from fastapi import FastAPI
 from pydantic import BaseModel  # ✅ FIX: Import BaseModel
@@ -45,5 +46,4 @@ class Job(BaseModel):
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 8000))  # Use Railway's assigned port
-    import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=port)

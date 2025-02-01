@@ -151,8 +151,8 @@ async def process_job(request: Request):
     salary_min = job.get("salary_min") or job.get("compensation", {}).get("min") or job.get("payRange", {}).get("min")
     salary_max = job.get("salary_max") or job.get("compensation", {}).get("max") or job.get("payRange", {}).get("max")
     currency = job.get("currency") or job.get("compensation", {}).get("currency") or "AUD"
-    date_published = job.get("date_published") or job.get("date_posted") or job.get("postedDate") or job.get(
-        "published")
+    date_published = job.get("datePublished") or job.get("datePosted") or job.get("postedDate") or job.get(
+        "published") or job.get("listingDate")
     contact_email = job.get("contact_email")
 
     # ✅ Normalize Location

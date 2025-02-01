@@ -117,13 +117,17 @@ async def process_job(request: Request):
 
     # ✅ Extract and Normalize Job Data
     job_id = job.get("job_id") or job.get("id") or job.get("job_link") or job.get("jobUrl")
-    source = job.get("source")
+
+    # ✅ Fix source extraction (Ensures it's always present)
+    source = job.get("source") or job.get("platform") or "Unknown"
+
     job_title = job.get("job_title") or job.get("title") or job.get("jobTitle") or job.get("position")
 
     # ✅ Fix company_name extraction (Handles both string & dict)
     company = job.get("company") or {}
     company_name = job.get("company_name") or job.get("company") or job.get("companyName") or company.get("name")
-    company_website = job.get("company_website") or job.get("company_url") or job.get("companyWebsite") or company.get("url")
+    company_website = job.get("company_website") or job.get("company_url") or job.get("companyWebsite") or company.get(
+        "url")
 
     # 🚨 Ensure `company_name` is a **string** before calling `.strip()`
     if isinstance(company_name, dict):
@@ -137,7 +141,8 @@ async def process_job(request: Request):
     salary_min = job.get("salary_min") or job.get("compensation", {}).get("min") or job.get("payRange", {}).get("min")
     salary_max = job.get("salary_max") or job.get("compensation", {}).get("max") or job.get("payRange", {}).get("max")
     currency = job.get("currency") or job.get("compensation", {}).get("currency") or "AUD"
-    date_published = job.get("date_published") or job.get("date_posted") or job.get("postedDate") or job.get("published")
+    date_published = job.get("date_published") or job.get("date_posted") or job.get("postedDate") or job.get(
+        "published")
     contact_email = job.get("contact_email")
 
     # ✅ Normalize Location
@@ -164,6 +169,27 @@ async def process_job(request: Request):
         }).execute()
 
         return {"message": "Duplicate job_id detected and logged", "job_id": job_id}
+
+    # ✅ Insert New Job
+    job_data = {
+        "job_id": job_id,
+        "source": source,
+        "job_title": job_title,
+        "company_id": company_id,
+        "job_url": job_url,
+        "location_city": location_city,
+        "location_state": location_state,
+        "location_country": location_country,
+        "salary_min": salary_min,
+        "salary_max": salary_max,
+        "currency": currency,
+        "date_published": date_published,
+        "contact_email": contact_email,
+        "normalized_hash": normalized_hash
+    }
+
+    supabase.table("jobs").insert(job_data).execute()
+    return {"message": "Job stored successfully", "job_id": job_id}
 
     # ✅ Insert New Job
     job_data = {

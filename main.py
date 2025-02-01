@@ -3,7 +3,7 @@ import uvicorn
 import hashlib
 import re
 import html
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from pydantic import BaseModel
 from supabase import create_client
 from dotenv import load_dotenv
@@ -44,28 +44,38 @@ class Job(BaseModel):
     contact_email: str | None = None
 
 
-# ✅ Helper function: Normalize location data
-def normalize_location(location: str | None):
-    """Converts different location formats into city, state, country"""
+# ✅ Helper function: Normalize location data (Handles string & dictionary formats)
+def normalize_location(location):
+    """Converts location data into city, state, country. Handles both string and object formats."""
     if not location:
         return None, None, "AU"  # Default to Australia
 
-    match = re.search(r"([^,]+),?\s?([A-Z]{2})?", location)
-    if match:
-        city, state = match.groups()
-        return city.strip() if city else None, state.strip() if state else None, "AU"
+    # ✅ If location is a dictionary (LinkedIn format)
+    if isinstance(location, dict):
+        city = location.get("city")
+        state = location.get("state")
+        country = location.get("country", "AU")  # Default to AU if missing
+        return city, state, country
 
+    # ✅ If location is a string, parse it (e.g., "Sydney, NSW")
+    if isinstance(location, str):
+        match = re.search(r"([^,]+),?\s?([A-Z]{2})?", location)
+        if match:
+            city, state = match.groups()
+            return city.strip() if city else None, state.strip() if state else None, "AU"
+
+    # 🚨 If format is unknown, return raw data safely
     return location, None, "AU"
 
 
 # ✅ Helper function: Normalize salary data
-def normalize_salary(salary_min: float | None, salary_max: float | None, currency: str | None):
+def normalize_salary(salary_min, salary_max, currency):
     """Standardizes salary and ensures a default currency"""
     return salary_min, salary_max, currency or "AUD"
 
 
 # ✅ Helper function: Clean job description (strip HTML)
-def clean_text(text: str | None):
+def clean_text(text):
     """Removes HTML tags and normalizes text"""
     if not text:
         return None
@@ -73,14 +83,14 @@ def clean_text(text: str | None):
 
 
 # ✅ Helper function: Generate a hash for deduplication
-def generate_job_hash(company_name: str, job_title: str, location_city: str | None):
+def generate_job_hash(company_name, job_title, location_city):
     """Creates a unique hash based on company, job title, and location"""
     base_string = f"{company_name.lower()}_{job_title.lower()}_{location_city.lower() if location_city else ''}"
     return hashlib.md5(base_string.encode()).hexdigest()
 
 
 # ✅ Helper function: Get or create company ID
-def get_or_create_company(company_name: str | None, company_website: str | None):
+def get_or_create_company(company_name, company_website):
     """Checks if a company exists, otherwise inserts it and returns company_id."""
 
     # 🚨 Handle missing company_name - Log it and return None
@@ -99,8 +109,6 @@ def get_or_create_company(company_name: str | None, company_website: str | None)
     return response.data[0]["company_id"]
 
 
-from fastapi import Request
-
 @app.post("/process_job")
 async def process_job(request: Request):
     """Handles raw job postings, normalizes fields, and stores them in Supabase."""
@@ -115,9 +123,9 @@ async def process_job(request: Request):
     company_website = job.get("company_website") or job.get("company_url") or job.get("companyWebsite") or job.get("advertiser", {}).get("website")
     job_url = job.get("job_url") or job.get("job_link") or job.get("jobUrl") or job.get("jobLink")
     location = job.get("location") or f"{job.get('location_city', '')}, {job.get('location_state', '')}"
-    salary_min = job.get("salary_min")
-    salary_max = job.get("salary_max")
-    currency = job.get("currency") or "AUD"
+    salary_min = job.get("salary_min") or job.get("compensation", {}).get("min") or job.get("payRange", {}).get("min")
+    salary_max = job.get("salary_max") or job.get("compensation", {}).get("max") or job.get("payRange", {}).get("max")
+    currency = job.get("currency") or job.get("compensation", {}).get("currency") or "AUD"
     date_published = job.get("date_published") or job.get("date_posted") or job.get("postedDate") or job.get("published")
     contact_email = job.get("contact_email")
 
@@ -137,11 +145,11 @@ async def process_job(request: Request):
     # ✅ Generate `normalized_hash`
     normalized_hash = generate_job_hash(company_name, job_title, location_city)
 
-    # 🚨 **Step 1: Check if the job_id already exists**
+    # 🚨 **Check if `job_id` already exists before inserting**
     existing_job = supabase.table("jobs").select("job_id").eq("job_id", job_id).execute()
 
     if existing_job.data:
-        # ✅ **Step 2: Log Duplicate Instead of Failing**
+        # ✅ **Log duplicate instead of failing**
         supabase.table("job_duplicates").insert({
             "original_job_id": existing_job.data[0]['job_id'],
             "duplicate_job_id": job_id,

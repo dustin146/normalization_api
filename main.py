@@ -137,16 +137,18 @@ async def process_job(request: Request):
     # ✅ Generate `normalized_hash`
     normalized_hash = generate_job_hash(company_name, job_title, location_city)
 
-    # ✅ Check for Duplicate Jobs
-    existing_job = supabase.table("jobs").select("job_id").eq("normalized_hash", normalized_hash).execute()
+    # 🚨 **Step 1: Check if the job_id already exists**
+    existing_job = supabase.table("jobs").select("job_id").eq("job_id", job_id).execute()
 
     if existing_job.data:
+        # ✅ **Step 2: Log Duplicate Instead of Failing**
         supabase.table("job_duplicates").insert({
             "original_job_id": existing_job.data[0]['job_id'],
             "duplicate_job_id": job_id,
             "match_score": 1.0
         }).execute()
-        return {"message": "Duplicate job detected and logged", "job_id": job_id}
+
+        return {"message": "Duplicate job_id detected and logged", "job_id": job_id}
 
     # ✅ Insert New Job
     job_data = {
@@ -167,7 +169,7 @@ async def process_job(request: Request):
     }
 
     supabase.table("jobs").insert(job_data).execute()
-    return {"message": "Job stored successfully", "job_id": job_id}
+    return {"message": "Job stored successfully", "job_id": job_id}"
 
 
 # ✅ Ensure FastAPI runs on Railway's assigned port

@@ -32,6 +32,10 @@ def get_jobs():
         print("❌ ERROR fetching jobs:", e)
         return {"error": str(e)}
 
+#add duplicat job detection and logging
+
+
+
 class Job(BaseModel):
     job_id: str
     source: str
@@ -58,12 +62,25 @@ def generate_job_hash(job):
 
 @app.post("/process_job")
 def process_job(job: Job):
-    """Handles job posting requests and stores them in Supabase."""
+    """Detects duplicate jobs across job boards and stores them in Supabase."""
 
     # ✅ Generate `normalized_hash`
     job_hash = generate_job_hash(job)
 
-    # ✅ Ensure `normalized_hash` is included before inserting
+    # ✅ Check if job exists in `jobs` table
+    existing_job = supabase.table("jobs").select("job_id").eq("normalized_hash", job_hash).execute()
+
+    if existing_job.data:
+        # ✅ Log duplicate in `job_duplicates`
+        supabase.table("job_duplicates").insert({
+            "original_job_id": existing_job.data[0]['job_id'],
+            "duplicate_job_id": job.job_id,
+            "match_score": 1.0
+        }).execute()
+
+        return {"message": "Duplicate job detected", "job_id": job.job_id}
+
+    # ✅ Insert new job
     job_data = job.dict()
     job_data["normalized_hash"] = job_hash
 
@@ -71,8 +88,9 @@ def process_job(job: Job):
         supabase.table("jobs").insert(job_data).execute()
         return {"message": "Job stored successfully", "job_id": job.job_id}
     except Exception as e:
-        print("❌ ERROR inserting job:", e)
         return {"error": str(e)}
+
+
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 8000))  # Use Railway's assigned port

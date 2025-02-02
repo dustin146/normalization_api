@@ -238,14 +238,7 @@ async def process_job(request: Request):
 
         if existing_job.data:
             # Job already exists, update it
-            if 'id' in existing_job.data[0]:
-                job_id = existing_job.data[0]['id']
-            elif 'job_id' in existing_job.data[0]:
-                job_id = existing_job.data[0]['job_id']
-            else:
-                logger.error(f"Unexpected data structure: {existing_job.data[0]}")
-                raise ValueError("Unable to find job identifier in existing job data")
-
+            job_id = existing_job.data[0]['job_id']  # Use 'job_id' instead of 'id'
             update_data = {
                 "source": source_platform,
                 "job_title": job_title,
@@ -261,7 +254,7 @@ async def process_job(request: Request):
                 "contact_email": contact_email,
                 "updated_at": datetime.now(timezone.utc).isoformat()
             }
-            result = supabase.table("jobs").update(update_data).eq("id", job_id).execute()
+            result = supabase.table("jobs").update(update_data).eq("job_id", job_id).execute()  # Use 'job_id' here
             logger.info(f"Updated existing job with ID: {job_id}")
         else:
             # Job doesn't exist, insert it
@@ -283,8 +276,7 @@ async def process_job(request: Request):
                 "created_at": datetime.now(timezone.utc).isoformat()
             }
             result = supabase.table("jobs").insert(job_data).execute()
-            job_id = result.data[0]['id'] if 'id' in result.data[0] else result.data[0]['job_id']
-            logger.info(f"Inserted new job with ID: {job_id}")
+            logger.info(f"Inserted new job with ID: {result.data[0]['job_id']}")
 
         return {"message": "Job processed successfully", "job_id": job_id}
 

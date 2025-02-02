@@ -62,7 +62,7 @@ def normalize_location(location: Union[str, Dict[str, Any], None]) -> Tuple[Opti
         country = location.get("country", "AU")
         return city, state, country
     if isinstance(location, str):
-        match = re.search(r"([^,]+),?\s?([A-Z]{2})?", location)
+        match = re.search(r"([^,]+),?\s?([^,\\s]{2,})?", location)
         if match:
             city, state = match.groups()
             return city.strip() if city else None, state.strip() if state else None, "AU"

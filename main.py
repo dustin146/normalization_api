@@ -227,9 +227,13 @@ async def process_job(request: Request):
             raise HTTPException(status_code=400, detail="Missing job_url; job cannot be inserted.")
 
         # --- Determine Location ---
-        seek_location = extract_seek_location(job)
-        location = seek_location or job.get("location") or f"{job.get('location_city', '')}, {job.get('location_state', '')}"
-        location_city, location_state, location_country = normalize_location(location)
+        location_data = None
+        if "locations" in job and isinstance(job["locations"], list) and job["locations"]:
+            location_data = {"locations": job["locations"]}
+        else:
+            location_data = job.get("location", {})
+        location_city, location_state, location_country = normalize_location(location_data)
+        logger.info(f"Normalized location: city={location_city}, state={location_state}, country={location_country}")
 
         # --- Salary, Date, and Contact ---
         salary_min = job.get("salary_min") or job.get("compensation", {}).get("min") or job.get("payRange", {}).get("min")

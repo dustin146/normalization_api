@@ -55,20 +55,39 @@ class Job(BaseModel):
 def normalize_location(location: Union[str, Dict[str, Any], None]) -> Tuple[Optional[str], Optional[str], str]:
     """
     Convert location data into (city, state, country).
+    Handles multiple formats including Seek's location structure.
     Default country is AU.
     """
     if not location:
         return None, None, "AU"
+
+    # Handle Seek's location format
     if isinstance(location, dict):
+        # Check if it's a Seek location structure with 'locations' array
+        if 'locations' in location and isinstance(location['locations'], list) and location['locations']:
+            seek_location = location['locations'][0]
+            if 'label' in seek_location:
+                # Parse "Adelaide SA" into city and state
+                parts = seek_location['label'].split()
+                if len(parts) >= 2:
+                    city = ' '.join(parts[:-1])  # Everything except the last part
+                    state = parts[-1]  # Last part is the state
+                    country = seek_location.get('countryCode', 'AU')
+                    return city, state, country
+        
+        # Handle regular dictionary format
         city = location.get("city")
         state = location.get("state")
         country = location.get("country", "AU")
         return city, state, country
+
+    # Handle string format
     if isinstance(location, str):
         match = re.search(r"([^,]+),?\s?([^,\\s]{2,})?", location)
         if match:
             city, state = match.groups()
             return city.strip() if city else None, state.strip() if state else None, "AU"
+    
     return location, None, "AU"
 
 

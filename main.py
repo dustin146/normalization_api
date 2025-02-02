@@ -153,130 +153,120 @@ async def process_job(request: Request):
     try:
         data = await request.json()
         job = data.get("body", data)
+        
+        # Log incoming job data
+        logger.info(f"Processing job: {job.get('title', 'Unknown')} from {job.get('companyName', 'Unknown Company')}")
+        
         job_id = (job.get("job_id") or job.get("id") or
                   job.get("job_link") or job.get("jobUrl") or
                   job.get("jobID") or job.get("job_url"))
         if not job_id:
+            logger.error("Job skipped: Missing job_id")
             raise HTTPException(status_code=400, detail="Missing job_id.")
         logger.info(f"Extracted job_id: {job_id}")
 
-    except json.JSONDecodeError as e:
-        logger.error(f"JSON Decode Error: {str(e)}")
-        raise HTTPException(status_code=400, detail=f"Invalid JSON: {str(e)}")
-    except Exception as e:
-        logger.error(f"Error processing job: {str(e)}")
-        raise HTTPException(status_code=500, detail="Internal server error")
-
-    # --- Extract essential fields ---
-    source_platform = (job.get("sourcePlatform") or job.get("platform") or "Unknown").strip()
-    if source_platform.lower() == "linkedin":
-        job_title = job.get("shortTitle") or job.get("title") or job.get("job_title") or job.get("jobTitle")
-    else:
-        job_title = job.get("job_title") or job.get("title") or job.get("jobTitle") or job.get("position")
-    if not job_title:
-        raise HTTPException(status_code=400, detail="Missing job_title.")
-
-    # --- Extract company info ---
-    company_info = job.get("company") or {}
-    company_name = (
-        job.get("company_name")
-        or job.get("company")
-        or job.get("companyName")
-        or (company_info.get("name") if isinstance(company_info, dict) else None)
-    )
-    company_website = (
-        job.get("company_website")
-        or job.get("company_url")
-        or job.get("companyWebsite")
-        or (company_info.get("url") if isinstance(company_info, dict) else None)
-    )
-    if isinstance(company_name, dict):
-        company_name = company_name.get("name")
-    if not company_name or not isinstance(company_name, str) or not company_name.strip():
-        raise HTTPException(status_code=400, detail="Missing company_name; job cannot be inserted.")
-
-    # --- Validate job URL ---
-    job_url = (
-        job.get("job_url")
-        or job.get("job_link")
-        or job.get("jobUrl")
-        or job.get("jobLink")
-        or job.get("url")
-    )
-    if not job_url or not isinstance(job_url, str):
-        raise HTTPException(status_code=400, detail="Missing job_url; job cannot be inserted.")
-
-    # --- Determine Location ---
-    seek_location = extract_seek_location(job)
-    location = seek_location or job.get("location") or f"{job.get('location_city', '')}, {job.get('location_state', '')}"
-    location_city, location_state, location_country = normalize_location(location)
-
-    # --- Salary, Date, and Contact ---
-    salary_min = job.get("salary_min") or job.get("compensation", {}).get("min") or job.get("payRange", {}).get("min")
-    salary_max = job.get("salary_max") or job.get("compensation", {}).get("max") or job.get("payRange", {}).get("max")
-    currency = job.get("currency") or job.get("compensation", {}).get("currency") or "AUD"
-    date_published = (
-        job.get("datePublished")
-        or job.get("datePosted")
-        or job.get("postedDate")
-        or job.get("published")
-        or job.get("listingDate")
-    )
-    contact_email = job.get("contact_email")
-    salary_min, salary_max, currency = normalize_salary(salary_min, salary_max, currency)
-
-    # --- Company & Deduplication ---
-    company_id = get_or_create_company(company_name, company_website)
-    if company_id is None:
-        raise HTTPException(status_code=400, detail="Invalid company data.")
-
-    normalized_hash = generate_job_hash(company_name, job_title, location_city)
-
-    try:
-        # Check if job with the same normalized_hash already exists
-        existing_job = supabase.table("jobs").select("*").eq("normalized_hash", normalized_hash).execute()
-
-        if existing_job.data:
-            # Job already exists, update it
-            job_id = existing_job.data[0]['job_id']  # Use 'job_id' instead of 'id'
-            update_data = {
-                "source": source_platform,
-                "job_title": job_title,
-                "company_id": company_id,
-                "job_url": job_url,
-                "location_city": location_city,
-                "location_state": location_state,
-                "location_country": location_country,
-                "salary_min": salary_min,
-                "salary_max": salary_max,
-                "currency": currency,
-                "date_published": date_published,
-                "contact_email": contact_email,
-                "updated_at": datetime.now(timezone.utc).isoformat()
-            }
-            result = supabase.table("jobs").update(update_data).eq("job_id", job_id).execute()  # Use 'job_id' here
-            logger.info(f"Updated existing job with ID: {job_id}")
+        # --- Extract essential fields ---
+        source_platform = (job.get("sourcePlatform") or job.get("platform") or "Unknown").strip()
+        if source_platform.lower() == "linkedin":
+            job_title = job.get("shortTitle") or job.get("title") or job.get("job_title") or job.get("jobTitle")
         else:
-            # Job doesn't exist, insert it
-            job_data = {
-                "job_id": job_id,
-                "source": source_platform,
-                "job_title": job_title,
-                "company_id": company_id,
-                "job_url": job_url,
-                "location_city": location_city,
-                "location_state": location_state,
-                "location_country": location_country,
-                "salary_min": salary_min,
-                "salary_max": salary_max,
-                "currency": currency,
-                "date_published": date_published,
-                "contact_email": contact_email,
-                "normalized_hash": normalized_hash,
-                "created_at": datetime.now(timezone.utc).isoformat()
-            }
+            job_title = job.get("job_title") or job.get("title") or job.get("jobTitle") or job.get("position")
+        if not job_title:
+            logger.error(f"Job {job_id} skipped: Missing job_title")
+            raise HTTPException(status_code=400, detail="Missing job_title.")
+
+        # --- Extract company info ---
+        company_info = job.get("company") or {}
+        company_name = (
+            job.get("company_name")
+            or job.get("company")
+            or job.get("companyName")
+            or (company_info.get("name") if isinstance(company_info, dict) else None)
+        )
+        company_website = (
+            job.get("company_website")
+            or job.get("company_url")
+            or job.get("companyWebsite")
+            or (company_info.get("url") if isinstance(company_info, dict) else None)
+        )
+        if isinstance(company_name, dict):
+            company_name = company_name.get("name")
+        if not company_name or not isinstance(company_name, str) or not company_name.strip():
+            logger.error(f"Job {job_id} skipped: Missing company_name")
+            raise HTTPException(status_code=400, detail="Missing company_name; job cannot be inserted.")
+
+        # --- Validate job URL ---
+        job_url = (
+            job.get("job_url")
+            or job.get("job_link")
+            or job.get("jobUrl")
+            or job.get("jobLink")
+            or job.get("url")
+        )
+        if not job_url or not isinstance(job_url, str):
+            logger.error(f"Job {job_id} skipped: Missing job_url")
+            raise HTTPException(status_code=400, detail="Missing job_url; job cannot be inserted.")
+
+        # --- Determine Location ---
+        seek_location = extract_seek_location(job)
+        location = seek_location or job.get("location") or f"{job.get('location_city', '')}, {job.get('location_state', '')}"
+        location_city, location_state, location_country = normalize_location(location)
+
+        # --- Salary, Date, and Contact ---
+        salary_min = job.get("salary_min") or job.get("compensation", {}).get("min") or job.get("payRange", {}).get("min")
+        salary_max = job.get("salary_max") or job.get("compensation", {}).get("max") or job.get("payRange", {}).get("max")
+        currency = job.get("currency") or job.get("compensation", {}).get("currency") or "AUD"
+        date_published = (
+            job.get("datePublished")
+            or job.get("datePosted")
+            or job.get("postedDate")
+            or job.get("published")
+            or job.get("listingDate")
+        )
+        contact_email = job.get("contact_email")
+        salary_min, salary_max, currency = normalize_salary(salary_min, salary_max, currency)
+
+        # --- Company & Deduplication ---
+        company_id = get_or_create_company(company_name, company_website)
+        if company_id is None:
+            logger.error(f"Job {job_id} skipped: Invalid company data")
+            raise HTTPException(status_code=400, detail="Invalid company data.")
+
+        normalized_hash = generate_job_hash(company_name, job_title, location_city)
+        
+        # Check for existing job
+        existing_job = supabase.table("jobs").select("*").eq("normalized_hash", normalized_hash).execute()
+        if existing_job.data:
+            logger.info(f"Job {job_id} already exists with hash {normalized_hash}")
+            return {"message": "Job already exists", "job_id": existing_job.data[0]['job_id']}
+        else:
+            logger.info(f"New job found with hash {normalized_hash}")
+
+        # If we get here, it's a new job
+        job_data = {
+            "job_id": job_id,
+            "source": source_platform,
+            "job_title": job_title,
+            "company_id": company_id,
+            "job_url": job_url,
+            "location_city": location_city,
+            "location_state": location_state,
+            "location_country": location_country,
+            "salary_min": salary_min,
+            "salary_max": salary_max,
+            "currency": currency,
+            "date_published": date_published,
+            "contact_email": contact_email,
+            "normalized_hash": normalized_hash,
+            "created_at": datetime.now(timezone.utc).isoformat()
+        }
+        try:
             result = supabase.table("jobs").insert(job_data).execute()
             logger.info(f"Inserted new job with ID: {result.data[0]['job_id']}")
+        except Exception as e:
+            logger.error(f"Error inserting job: {e}")
+            logger.error(f"Full error details: {traceback.format_exc()}")
+            raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
         return {"message": "Job processed successfully", "job_id": job_id}
 

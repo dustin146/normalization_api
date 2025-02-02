@@ -9,6 +9,7 @@ from pydantic import BaseModel
 from supabase import create_client, Client
 from dotenv import load_dotenv
 from typing import Optional, Tuple, Dict, Any, Union
+from datetime import datetime, timzeone
 
 # --- Setup logging ---
 logging.basicConfig(level=logging.INFO)
@@ -264,22 +265,11 @@ async def process_job(request: Request):
         return {"message": "Duplicate job_id detected and logged", "job_id": job_id}
 
     # --- Insert Job ---
-    job_data = {
-        "job_id": job_id,
-        "source": source_platform,
-        "job_title": job_title,
-        "company_id": company_id,
-        "job_url": job_url,
-        "location_city": location_city,
-        "location_state": location_state,
-        "location_country": location_country,
-        "salary_min": salary_min,
-        "salary_max": salary_max,
-        "currency": currency,
-        "date_published": date_published,
-        "contact_email": contact_email,
-        "normalized_hash": normalized_hash
-    }
+    job_data = {"job_id": job_id, "source": source_platform, "job_title": job_title, "company_id": company_id,
+                "job_url": job_url, "location_city": location_city, "location_state": location_state,
+                "location_country": location_country, "salary_min": salary_min, "salary_max": salary_max,
+                "currency": currency, "date_published": date_published, "contact_email": contact_email,
+                "normalized_hash": normalized_hash, "created_at": datetime.now(timezone.utc).isoformat()}
 
     try:
         supabase.table("jobs").insert(job_data).execute()

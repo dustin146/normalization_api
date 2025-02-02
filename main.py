@@ -146,40 +146,27 @@ def extract_seek_location(job: Dict[str, Any]) -> Optional[str]:
 @app.post("/process_job")
 async def process_job(request: Request):
     """
-    Process a job object from a webhook event
+    Process a job object from a webhook event.
     """
     try:
         data = await request.json()
-
         job = data.get("body", data)
-
         job_id = (job.get("job_id") or job.get("id") or
                   job.get("job_link") or job.get("jobUrl") or
                   job.get("jobID") or job.get("job_url"))
-
         if not job_id:
             raise HTTPException(status_code=400, detail="Missing job_id.")
-
-        # Log the extracted job_id for debugging
         logger.info(f"Extracted job_id: {job_id}")
 
-
     except json.JSONDecodeError as e:
-
         logger.error(f"JSON Decode Error: {str(e)}")
-
         raise HTTPException(status_code=400, detail=f"Invalid JSON: {str(e)}")
-
     except Exception as e:
-
         logger.error(f"Error processing job: {str(e)}")
-
         raise HTTPException(status_code=500, detail="Internal server error")
 
     # --- Extract essential fields ---
-
     source_platform = (job.get("sourcePlatform") or job.get("platform") or "Unknown").strip()
-
     if source_platform.lower() == "linkedin":
         job_title = job.get("shortTitle") or job.get("title") or job.get("job_title") or job.get("jobTitle")
     else:
@@ -234,7 +221,6 @@ async def process_job(request: Request):
         or job.get("listingDate")
     )
     contact_email = job.get("contact_email")
-
     salary_min, salary_max, currency = normalize_salary(salary_min, salary_max, currency)
 
     # --- Company & Deduplication ---
@@ -245,39 +231,59 @@ async def process_job(request: Request):
     normalized_hash = generate_job_hash(company_name, job_title, location_city)
 
     try:
-        existing_job = supabase.table("jobs") \
-            .select("job_id") \
-            .eq("job_id", job_id) \
-            .execute()
+        # Check if a job with the same normalized_hash already exists
+        existing_job = supabase.table("jobs").select("*").eq("normalized_hash", normalized_hash).execute()
+
+        if existing_job.data:
+            # Job exists, update it
+            job_record_id = existing_job.data[0]['id']
+            update_data = {
+                "source": source_platform,
+                "job_title": job_title,
+                "company_id": company_id,
+                "job_url": job_url,
+                "location_city": location_city,
+                "location_state": location_state,
+                "location_country": location_country,
+                "salary_min": salary_min,
+                "salary_max": salary_max,
+                "currency": currency,
+                "date_published": date_published,
+                "contact_email": contact_email,
+                "updated_at": datetime.now(timezone.utc).isoformat()
+            }
+            supabase.table("jobs").update(update_data).eq("id", job_record_id).execute()
+            logger.info(f"Updated existing job with ID: {job_record_id}")
+            job_id = job_record_id
+        else:
+            # Job doesn't exist, insert it
+            job_data = {
+                "job_id": job_id,
+                "source": source_platform,
+                "job_title": job_title,
+                "company_id": company_id,
+                "job_url": job_url,
+                "location_city": location_city,
+                "location_state": location_state,
+                "location_country": location_country,
+                "salary_min": salary_min,
+                "salary_max": salary_max,
+                "currency": currency,
+                "date_published": date_published,
+                "contact_email": contact_email,
+                "normalized_hash": normalized_hash,
+                "created_at": datetime.now(timezone.utc).isoformat()
+            }
+            result = supabase.table("jobs").insert(job_data).execute()
+            job_id = result.data[0]['id']
+            logger.info(f"Inserted new job with ID: {job_id}")
+
+        return {"message": "Job processed successfully", "job_id": job_id}
+
     except Exception as e:
-        logger.error(f"Error checking for duplicate job: {e}")
-        raise HTTPException(status_code=500, detail="Error checking job duplication.")
+        logger.error(f"Error processing job: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
-    if existing_job.data:
-        try:
-            supabase.table("job_duplicates").insert({
-                "original_job_id": existing_job.data[0]["job_id"],
-                "duplicate_job_id": job_id,
-                "match_score": 1.0
-            }).execute()
-        except Exception as e:
-            logger.error(f"Error logging duplicate: {e}")
-        return {"message": "Duplicate job_id detected and logged", "job_id": job_id}
-
-    # --- Insert Job ---
-    job_data = {"job_id": job_id, "source": source_platform, "job_title": job_title, "company_id": company_id,
-                "job_url": job_url, "location_city": location_city, "location_state": location_state,
-                "location_country": location_country, "salary_min": salary_min, "salary_max": salary_max,
-                "currency": currency, "date_published": date_published, "contact_email": contact_email,
-                "normalized_hash": normalized_hash, "created_at": datetime.now(timezone.utc).isoformat()}
-
-    try:
-        supabase.table("jobs").insert(job_data).execute()
-    except Exception as e:
-        logger.error(f"Error inserting job: {e}")
-        raise HTTPException(status_code=500, detail="Error inserting job data.")
-
-    return {"message": "Job stored successfully", "job_id": job_id}
 
 
 if __name__ == "__main__":

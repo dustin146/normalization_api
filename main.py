@@ -10,6 +10,8 @@ from supabase import create_client, Client
 from dotenv import load_dotenv
 from typing import Optional, Tuple, Dict, Any, Union
 from datetime import datetime, timezone
+import traceback
+import json
 
 # --- Setup logging ---
 logging.basicConfig(level=logging.INFO)
@@ -231,12 +233,19 @@ async def process_job(request: Request):
     normalized_hash = generate_job_hash(company_name, job_title, location_city)
 
     try:
-        # Check if a job with the same normalized_hash already exists
+        # Check if job with the same normalized_hash already exists
         existing_job = supabase.table("jobs").select("*").eq("normalized_hash", normalized_hash).execute()
 
         if existing_job.data:
-            # Job exists, update it
-            job_record_id = existing_job.data[0]['id']
+            # Job already exists, update it
+            if 'id' in existing_job.data[0]:
+                job_id = existing_job.data[0]['id']
+            elif 'job_id' in existing_job.data[0]:
+                job_id = existing_job.data[0]['job_id']
+            else:
+                logger.error(f"Unexpected data structure: {existing_job.data[0]}")
+                raise ValueError("Unable to find job identifier in existing job data")
+
             update_data = {
                 "source": source_platform,
                 "job_title": job_title,
@@ -252,9 +261,8 @@ async def process_job(request: Request):
                 "contact_email": contact_email,
                 "updated_at": datetime.now(timezone.utc).isoformat()
             }
-            supabase.table("jobs").update(update_data).eq("id", job_record_id).execute()
-            logger.info(f"Updated existing job with ID: {job_record_id}")
-            job_id = job_record_id
+            result = supabase.table("jobs").update(update_data).eq("id", job_id).execute()
+            logger.info(f"Updated existing job with ID: {job_id}")
         else:
             # Job doesn't exist, insert it
             job_data = {
@@ -275,15 +283,15 @@ async def process_job(request: Request):
                 "created_at": datetime.now(timezone.utc).isoformat()
             }
             result = supabase.table("jobs").insert(job_data).execute()
-            job_id = result.data[0]['id']
+            job_id = result.data[0]['id'] if 'id' in result.data[0] else result.data[0]['job_id']
             logger.info(f"Inserted new job with ID: {job_id}")
 
         return {"message": "Job processed successfully", "job_id": job_id}
 
     except Exception as e:
         logger.error(f"Error processing job: {str(e)}")
-        raise HTTPException(status_code=500, detail="Internal server error")
-
+        logger.error(f"Full error details: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 
 if __name__ == "__main__":

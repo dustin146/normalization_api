@@ -9,7 +9,7 @@ from pydantic import BaseModel
 from supabase import create_client, Client
 from dotenv import load_dotenv
 from typing import Optional, Tuple, Dict, Any, Union
-from datetime import datetime, timzeone
+from datetime import datetime, timezone
 
 # --- Setup logging ---
 logging.basicConfig(level=logging.INFO)
@@ -117,7 +117,7 @@ def get_or_create_company(company_name: str, company_website: Optional[str]) -> 
 
     if existing_company.data:
         return existing_company.data[0]["company_id"]
-
+        company_data = {"company_name": company_name, "company_website": company_website, "created_at": datetime.now(timezone.utc)}
     try:
         response = supabase.table("companies") \
             .insert({"company_name": company_name, "company_website": company_website}) \

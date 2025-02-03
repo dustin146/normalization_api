@@ -221,6 +221,7 @@ async def process_job(request: Request):
             or job.get("jobUrl")
             or job.get("jobLink")
             or job.get("url")
+            or job.get("link")
         )
         if not job_url or not isinstance(job_url, str):
             logger.error(f"Job {job_id} skipped: Missing job_url")

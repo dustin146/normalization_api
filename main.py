@@ -188,14 +188,14 @@ async def process_job(request: Request):
         source_platform = job.get("sourcePlatform", "").lower()
         logger.info(f"Processing job from source: {source_platform}")
         
+        # Initialize common variables
+        company_profile = job.get("companyProfile") or {}
+        company_info = job.get("company") or {}
+        
         if source_platform == "seek":
-            # Seek format: check advertiser and companyProfile
-            advertiser = job.get("advertiser") or {}
-            company_profile = job.get("companyProfile") or {}
-            company_name = (
-                advertiser.get("name")
-                or company_profile.get("name")
-            )
+            # Seek format: use companyProfile for the actual company
+            company_name = company_profile.get("name")
+            company_website = company_profile.get("website")
         elif source_platform == "indeed":
             # Indeed format: company name is directly in the job object
             company_name = (
@@ -203,34 +203,36 @@ async def process_job(request: Request):
                 or job.get("companyName")
                 or job.get("company")
             )
+            company_website = (
+                job.get("company_website")
+                or job.get("companyWebsite")
+                or company_info.get("url")
+            )
         elif source_platform == "linkedin":
             # LinkedIn format: usually in companyName
             company_name = job.get("companyName")
+            company_website = job.get("companyWebsite")
         else:
             # Default: try all possible locations
-            advertiser = job.get("advertiser") or {}
-            company_profile = job.get("companyProfile") or {}
-            company_info = job.get("company") or {}
             company_name = (
                 job.get("company_name")
                 or job.get("companyName")
                 or job.get("company")
-                or advertiser.get("name")
                 or company_profile.get("name")
                 or (company_info.get("name") if isinstance(company_info, dict) else None)
             )
+            company_website = (
+                job.get("company_website")
+                or job.get("company_url")
+                or job.get("companyWebsite")
+                or company_profile.get("website")
+                or (company_info.get("url") if isinstance(company_info, dict) else None)
+            )
         
         logger.info(f"Extracted company name: {company_name}")
+        logger.info(f"Extracted company website: {company_website}")
         
-        # --- Extract company info ---
-        company_website = (
-            job.get("company_website")
-            or job.get("company_url")
-            or job.get("companyWebsite")
-            or (company_info.get("url") if isinstance(company_info, dict) else None)
-        )
-        if isinstance(company_name, dict):
-            company_name = company_name.get("name")
+        # --- Validate company info ---
         if not company_name or not isinstance(company_name, str) or not company_name.strip():
             logger.error(f"Job {job_id} skipped: Missing company_name")
             raise HTTPException(status_code=400, detail="Missing company_name; job cannot be inserted.")

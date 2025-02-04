@@ -185,23 +185,44 @@ async def process_job(request: Request):
         logger.info(f"Extracted job_id: {job_id}")
 
         # --- Extract essential fields ---
-        source_platform = (job.get("sourcePlatform") or job.get("platform") or "Unknown").strip()
-        if source_platform.lower() == "linkedin":
-            job_title = job.get("shortTitle") or job.get("title") or job.get("job_title") or job.get("jobTitle")
+        source_platform = job.get("sourcePlatform", "").lower()
+        logger.info(f"Processing job from source: {source_platform}")
+        
+        if source_platform == "seek":
+            # Seek format: check advertiser and companyProfile
+            advertiser = job.get("advertiser") or {}
+            company_profile = job.get("companyProfile") or {}
+            company_name = (
+                advertiser.get("name")
+                or company_profile.get("name")
+            )
+        elif source_platform == "indeed":
+            # Indeed format: company name is directly in the job object
+            company_name = (
+                job.get("company_name")
+                or job.get("companyName")
+                or job.get("company")
+            )
+        elif source_platform == "linkedin":
+            # LinkedIn format: usually in companyName
+            company_name = job.get("companyName")
         else:
-            job_title = job.get("job_title") or job.get("title") or job.get("jobTitle") or job.get("position")
-        if not job_title:
-            logger.error(f"Job {job_id} skipped: Missing job_title")
-            raise HTTPException(status_code=400, detail="Missing job_title.")
-
+            # Default: try all possible locations
+            advertiser = job.get("advertiser") or {}
+            company_profile = job.get("companyProfile") or {}
+            company_info = job.get("company") or {}
+            company_name = (
+                job.get("company_name")
+                or job.get("companyName")
+                or job.get("company")
+                or advertiser.get("name")
+                or company_profile.get("name")
+                or (company_info.get("name") if isinstance(company_info, dict) else None)
+            )
+        
+        logger.info(f"Extracted company name: {company_name}")
+        
         # --- Extract company info ---
-        company_info = job.get("company") or {}
-        company_name = (
-            job.get("company_name")
-            or job.get("company")
-            or job.get("companyName")
-            or (company_info.get("name") if isinstance(company_info, dict) else None)
-        )
         company_website = (
             job.get("company_website")
             or job.get("company_url")
@@ -256,7 +277,7 @@ async def process_job(request: Request):
             logger.error(f"Job {job_id} skipped: Invalid company data")
             raise HTTPException(status_code=400, detail="Invalid company data.")
 
-        normalized_hash = generate_job_hash(company_name, job_title, location_city)
+        normalized_hash = generate_job_hash(company_name, job.get("job_title") or job.get("title") or job.get("jobTitle") or job.get("position"), location_city)
         
         # Check for existing job
         existing_job = supabase.table("jobs").select("*").eq("normalized_hash", normalized_hash).execute()
@@ -270,7 +291,7 @@ async def process_job(request: Request):
         job_data = {
             "job_id": job_id,
             "source": source_platform,
-            "job_title": job_title,
+            "job_title": job.get("job_title") or job.get("title") or job.get("jobTitle") or job.get("position"),
             "company_id": company_id,
             "job_url": job_url,
             "location_city": location_city,

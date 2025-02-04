@@ -194,7 +194,16 @@ async def process_job(request: Request):
         
         if source_platform == "seek":
             # Seek format: use companyProfile for the actual company
-            company_name = company_profile.get("name")
+            advertiser = job.get("advertiser") or {}
+            profile_name = company_profile.get("name")
+            
+            # Use advertiser name if company profile name is N/A or missing
+            if not profile_name or profile_name == "N/A":
+                company_name = advertiser.get("name")
+                logger.info(f"Using advertiser name as fallback: {company_name}")
+            else:
+                company_name = profile_name
+                
             company_website = company_profile.get("website")
         elif source_platform == "indeed":
             # Indeed format: company name is directly in the job object

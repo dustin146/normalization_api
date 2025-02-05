@@ -211,6 +211,23 @@ async def process_job(request: Request):
             salary_max = None
             job_url = job.get("link") or job.get("applyUrl", "")  # LinkedIn uses 'link' field
             contact_email = None  # LinkedIn typically doesn't provide contact email
+        elif source_platform == "indeed":
+            job_id = job.get("jobKey")  # Indeed uses 'jobKey' field
+            company_name = job.get("companyName", "Unknown Company")
+            company_website = job.get("companyUrl")
+            job_title = job.get("title", "")
+            location_info = job.get("location", {})
+            location_city = location_info.get("city")
+            location_state = None  # Extract from formattedAddressLong if needed
+            if location_info.get("formattedAddressLong"):
+                state_parts = location_info["formattedAddressLong"].split(" ")
+                if len(state_parts) > 1:
+                    location_state = state_parts[-1]
+            location_country = location_info.get("countryCode", "AU")
+            salary_min = None  # Indeed salary info needs to be parsed from description if available
+            salary_max = None
+            job_url = job.get("jobUrl", "")
+            contact_email = None  # Indeed typically doesn't provide contact email
         else:
             # Handle original/default format
             job_id = (job.get("job_id") or job.get("jobID") or 

@@ -196,6 +196,21 @@ async def process_job(request: Request):
             job_url = job.get("jobLink") or job.get("applyLink", "")
             contacts = job.get("contacts", [])
             contact_email = next((contact["value"] for contact in contacts if contact.get("type", "").lower() == "email"), None)
+        elif source_platform == "linkedin":
+            job_id = job.get("id")  # LinkedIn uses 'id' field
+            company_name = job.get("companyName", "Unknown Company")
+            company_website = job.get("companyWebsite") or job.get("companyLinkedinUrl")
+            job_title = job.get("title", "")
+            location = job.get("location", "")
+            location_parts = location.split(", ") if location else []
+            location_city = location_parts[0] if len(location_parts) > 0 else None
+            location_state = location_parts[1] if len(location_parts) > 1 else None
+            location_country = location_parts[2] if len(location_parts) > 2 else "AU"
+            salary_info = job.get("salaryInfo", [])
+            salary_min = None
+            salary_max = None
+            job_url = job.get("link") or job.get("applyUrl", "")  # LinkedIn uses 'link' field
+            contact_email = None  # LinkedIn typically doesn't provide contact email
         else:
             # Handle original/default format
             job_id = (job.get("job_id") or job.get("jobID") or 

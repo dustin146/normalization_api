@@ -171,75 +171,80 @@ async def process_job(request: Request):
     """
     try:
         data = await request.json()
+        
+        # Handle nested data structure - job data might be in body or at root
         job = data.get("body", data)
         
-        # Log incoming job data
-        logger.info(f"Processing job: {job.get('title', 'Unknown')} from {job.get('companyName', 'Unknown Company')}")
+        # Extract source platform early to determine parsing logic
+        source_platform = job.get("sourcePlatform", "").lower()
+        logger.info(f"Processing job from source: {source_platform}")
         
-        job_id = (job.get("job_id") or job.get("id") or
-                  job.get("job_link") or job.get("jobUrl") or
-                  job.get("jobID") or job.get("job_url"))
+        # Extract job_id based on source
+        if source_platform == "seek":
+            job_id = job.get("id") or job.get("jobLink") or job.get("applyLink")
+            company_info = job.get("advertiser") or job.get("companyProfile") or {}
+            company_name = company_info.get("name", "Unknown Company")
+            company_website = company_info.get("website")
+            job_title = job.get("title", "")
+            location_info = job.get("joblocationInfo", {})
+            location_city = location_info.get("suburb") or location_info.get("location")
+            location_state = location_info.get("area")
+            location_country = location_info.get("countryCode", "AU")
+            salary_info = job.get("salary", {})
+            salary_amount = salary_info.get("amount", "")
+            salary_min, salary_max = parse_salary_range(salary_amount) if salary_amount else (None, None)
+            job_url = job.get("jobLink") or job.get("applyLink", "")
+            contacts = job.get("contacts", [])
+            contact_email = next((contact["value"] for contact in contacts if contact.get("type", "").lower() == "email"), None)
+        else:
+            # Handle original/default format
+            job_id = (job.get("job_id") or job.get("jobID") or 
+                     job.get("job_url") or job.get("jobUrl"))
+            company_name = job.get("company_name", "Unknown Company")
+            company_website = job.get("company_website")
+            job_title = job.get("job_title", "")
+            location_city = job.get("location_city")
+            location_state = job.get("location_state")
+            location_country = job.get("location_country", "AU")
+            salary_min = job.get("salary_min")
+            salary_max = job.get("salary_max")
+            job_url = job.get("job_url") or job.get("jobUrl", "")
+            contact_email = job.get("contact_email")
+
         if not job_id:
             logger.error("Job skipped: Missing job_id")
             raise HTTPException(status_code=400, detail="Missing job_id.")
         logger.info(f"Extracted job_id: {job_id}")
 
-        # --- Extract essential fields ---
-        source_platform = job.get("sourcePlatform", "").lower()
-        logger.info(f"Processing job from source: {source_platform}")
+        if not job_title:
+            raise HTTPException(status_code=400, detail="Missing job title")
+
+        # Extract dates - handle both formats
+        date_published = (
+            job.get("listedAt") or 
+            job.get("date_published") or 
+            datetime.now(timezone.utc).isoformat()
+        )
         
-        # Initialize common variables
-        company_profile = job.get("companyProfile") or {}
-        company_info = job.get("company") or {}
-        
-        if source_platform == "seek":
-            # Seek format: use companyProfile for the actual company
-            advertiser = job.get("advertiser") or {}
-            profile_name = company_profile.get("name")
-            
-            # Use advertiser name if company profile name is N/A or missing
-            if not profile_name or profile_name == "N/A":
-                company_name = advertiser.get("name")
-                logger.info(f"Using advertiser name as fallback: {company_name}")
-            else:
-                company_name = profile_name
-                
-            company_website = company_profile.get("website")
-        elif source_platform == "indeed":
-            # Indeed format: company name is directly in the job object
-            company_name = (
-                job.get("company_name")
-                or job.get("companyName")
-                or job.get("company")
-            )
-            company_website = (
-                job.get("company_website")
-                or job.get("companyWebsite")
-                or company_info.get("url")
-            )
-        elif source_platform == "linkedin":
-            # LinkedIn format: usually in companyName
-            company_name = job.get("companyName")
-            company_website = job.get("companyWebsite")
-        else:
-            # Default: try all possible locations
-            company_name = (
-                job.get("company_name")
-                or job.get("companyName")
-                or job.get("company")
-                or company_profile.get("name")
-                or (company_info.get("name") if isinstance(company_info, dict) else None)
-            )
-            company_website = (
-                job.get("company_website")
-                or job.get("company_url")
-                or job.get("companyWebsite")
-                or company_profile.get("website")
-                or (company_info.get("url") if isinstance(company_info, dict) else None)
-            )
-        
-        logger.info(f"Extracted company name: {company_name}")
-        logger.info(f"Extracted company website: {company_website}")
+        # Create standardized job object
+        processed_job = {
+            "job_id": job_id,
+            "source": source_platform or job.get("source", "unknown"),
+            "job_title": job_title,
+            "company_name": company_name,
+            "company_website": company_website,
+            "job_url": job_url,
+            "location_city": location_city,
+            "location_state": location_state,
+            "location_country": location_country,
+            "salary_min": salary_min,
+            "salary_max": salary_max,
+            "date_published": date_published,
+            "contact_email": contact_email
+        }
+
+        # Log incoming job data
+        logger.info(f"Processing job: {job_title} from {company_name}")
         
         # --- Validate company info ---
         if not company_name or not isinstance(company_name, str) or not company_name.strip():
@@ -247,48 +252,24 @@ async def process_job(request: Request):
             raise HTTPException(status_code=400, detail="Missing company_name; job cannot be inserted.")
 
         # --- Validate job URL ---
-        job_url = (
-            job.get("job_url")
-            or job.get("job_link")
-            or job.get("jobUrl")
-            or job.get("jobLink")
-            or job.get("url")
-            or job.get("link")
-        )
         if not job_url or not isinstance(job_url, str):
             logger.error(f"Job {job_id} skipped: Missing job_url")
             raise HTTPException(status_code=400, detail="Missing job_url; job cannot be inserted.")
 
         # --- Determine Location ---
-        location_data = None
-        if "locations" in job and isinstance(job["locations"], list) and job["locations"]:
-            location_data = {"locations": job["locations"]}
-        else:
-            location_data = job.get("location", {})
-        location_city, location_state, location_country = normalize_location(location_data)
+        location_city, location_state, location_country = normalize_location({"city": location_city, "state": location_state, "country": location_country})
         logger.info(f"Normalized location: city={location_city}, state={location_state}, country={location_country}")
 
         # --- Salary, Date, and Contact ---
-        salary_min = job.get("salary_min") or job.get("compensation", {}).get("min") or job.get("payRange", {}).get("min")
-        salary_max = job.get("salary_max") or job.get("compensation", {}).get("max") or job.get("payRange", {}).get("max")
-        currency = job.get("currency") or job.get("compensation", {}).get("currency") or "AUD"
-        date_published = (
-            job.get("datePublished")
-            or job.get("datePosted")
-            or job.get("postedDate")
-            or job.get("published")
-            or job.get("listingDate")
-        )
-        contact_email = job.get("contact_email")
-        salary_min, salary_max, currency = normalize_salary(salary_min, salary_max, currency)
-
+        salary_min, salary_max, currency = normalize_salary(salary_min, salary_max, "AUD")
+        
         # --- Company & Deduplication ---
         company_id = get_or_create_company(company_name, company_website)
         if company_id is None:
             logger.error(f"Job {job_id} skipped: Invalid company data")
             raise HTTPException(status_code=400, detail="Invalid company data.")
 
-        normalized_hash = generate_job_hash(company_name, job.get("job_title") or job.get("title") or job.get("jobTitle") or job.get("position"), location_city)
+        normalized_hash = generate_job_hash(company_name, job_title, location_city)
         
         # Check for existing job
         existing_job = supabase.table("jobs").select("*").eq("normalized_hash", normalized_hash).execute()
@@ -302,7 +283,7 @@ async def process_job(request: Request):
         job_data = {
             "job_id": job_id,
             "source": source_platform,
-            "job_title": job.get("job_title") or job.get("title") or job.get("jobTitle") or job.get("position"),
+            "job_title": job_title,
             "company_id": company_id,
             "job_url": job_url,
             "location_city": location_city,
@@ -330,6 +311,15 @@ async def process_job(request: Request):
         logger.error(f"Error processing job: {str(e)}")
         logger.error(f"Full error details: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+
+def parse_salary_range(salary_amount: str) -> Tuple[Optional[float], Optional[float]]:
+    """
+    Parse salary range from string.
+    """
+    # Implement salary range parsing logic here
+    # For now, just return None for both min and max
+    return None, None
 
 
 if __name__ == "__main__":

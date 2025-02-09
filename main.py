@@ -220,20 +220,27 @@ async def process_job(request: Request):
             contact_email = None  # LinkedIn typically doesn't provide contact email
         elif source_platform == "indeed":
             job_id = job.get("jobKey")  # Indeed uses 'jobKey' field
-            company_name = job.get("companyName", "Unknown Company")
-            company_website = job.get("companyUrl")
+            
+            # Extract company info from the nested company object
+            company_info = job.get("company", {})
+            company_name = company_info.get("companyName", "Unknown Company")
+            company_website = company_info.get("companyOverviewLink")
+            
             job_title = job.get("title", "")
-            location_info = job.get("location", {})
-            location_city = location_info.get("city")
-            location_state = None  # Extract from formattedAddressLong if needed
-            if location_info.get("formattedAddressLong"):
-                state_parts = location_info["formattedAddressLong"].split(" ")
-                if len(state_parts) > 1:
-                    location_state = state_parts[-1]
-            location_country = location_info.get("countryCode", "AU")
-            salary_min = None  # Indeed salary info needs to be parsed from description if available
-            salary_max = None
-            job_url = job.get("indeedJobLink") or job.get("jobUrl", "")
+            formatted_location = job.get("formattedLocation", "")
+            
+            # Parse location from formattedLocation
+            location_parts = formatted_location.split(" ") if formatted_location else []
+            location_city = " ".join(location_parts[:-1]) if len(location_parts) > 1 else formatted_location
+            location_state = location_parts[-1] if len(location_parts) > 1 else None
+            location_country = "AU"  # Default to AU for Indeed Australia
+            
+            # Extract salary information
+            salary_info = job.get("salary", {})
+            salary_min = salary_info.get("salaryMin", None)
+            salary_max = salary_info.get("salaryMax", None)
+            
+            job_url = job.get("indeedJobLink", "")
             contact_email = None  # Indeed typically doesn't provide contact email
         else:
             # Handle original/default format

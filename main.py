@@ -138,10 +138,17 @@ def get_or_create_company(company_name: str, company_website: Optional[str]) -> 
 
     if existing_company.data:
         return existing_company.data[0]["company_id"]
-        company_data = {"company_name": company_name, "company_website": company_website, "created_at": datetime.now(timezone.utc)}
+    
+    # Company doesn't exist, create a new one
+    company_data = {
+        "company_name": company_name,
+        "company_website": company_website,
+        "created_at": datetime.now(timezone.utc)
+    }
+    
     try:
         response = supabase.table("companies") \
-            .insert({"company_name": company_name, "company_website": company_website}) \
+            .insert(company_data) \
             .execute()
         return response.data[0]["company_id"]
     except Exception as e:

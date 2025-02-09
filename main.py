@@ -372,13 +372,26 @@ async def process_job(request: Request):
 
         normalized_hash = generate_job_hash(company_name, job_title, location_city)
         
-        # Check for existing job
-        existing_job = supabase.table("jobs").select("*").eq("normalized_hash", normalized_hash).execute()
-        if existing_job.data:
-            logger.info(f"Job {job_id} already exists with hash {normalized_hash}")
-            return {"message": "Job already exists", "job_id": existing_job.data[0]['job_id']}
-        else:
-            logger.info(f"New job found with hash {normalized_hash}")
+        # Check for existing job by either hash or job_id
+        try:
+            existing_job = supabase.table("jobs") \
+                .select("*") \
+                .or_(f"normalized_hash.eq.{normalized_hash},job_id.eq.{job_id}") \
+                .execute()
+            
+            if existing_job.data:
+                existing = existing_job.data[0]
+                if existing['job_id'] == job_id:
+                    logger.info(f"Job {job_id} already exists")
+                    return {"message": "Job already exists", "job_id": job_id}
+                elif existing['normalized_hash'] == normalized_hash:
+                    logger.info(f"Similar job already exists with hash {normalized_hash}")
+                    return {"message": "Similar job already exists", "job_id": existing['job_id']}
+                
+            logger.info(f"No existing job found with ID {job_id} or hash {normalized_hash}")
+        except Exception as e:
+            logger.error(f"Error checking for existing job: {e}")
+            # Continue with insertion attempt even if check fails
 
         # If we get here, it's a new job
         job_data = {

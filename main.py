@@ -226,7 +226,7 @@ async def process_job(request: Request):
             location_country = location_info.get("countryCode", "AU")
             salary_min = None  # Indeed salary info needs to be parsed from description if available
             salary_max = None
-            job_url = job.get("jobUrl", "")
+            job_url = job.get("indeedJobLink") or job.get("jobUrl", "")
             contact_email = None  # Indeed typically doesn't provide contact email
         else:
             # Handle original/default format

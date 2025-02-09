@@ -123,37 +123,56 @@ def get_or_create_company(company_name: str, company_website: Optional[str]) -> 
     """
     Return company_id if found, or insert a new record and return its company_id.
     """
-    if not company_name.strip():
-        logger.warning("Missing company_name. Cannot insert job.")
+    if not company_name or not isinstance(company_name, str):
+        logger.warning(f"Invalid company_name: {company_name}")
+        return None
+
+    company_name = company_name.strip()
+    if not company_name:
+        logger.warning("Empty company_name after stripping whitespace")
         return None
 
     try:
+        # First try to find existing company
+        logger.info(f"Checking for existing company: {company_name}")
         existing_company = supabase.table("companies") \
             .select("company_id") \
             .eq("company_name", company_name) \
             .execute()
-    except Exception as e:
-        logger.error(f"Error checking company: {e}")
-        raise HTTPException(status_code=500, detail="Database error on company lookup.")
-
-    if existing_company.data:
-        return existing_company.data[0]["company_id"]
-    
-    # Company doesn't exist, create a new one
-    company_data = {
-        "company_name": company_name,
-        "company_website": company_website,
-        "created_at": datetime.now(timezone.utc)
-    }
-    
-    try:
+        
+        if existing_company.data:
+            logger.info(f"Found existing company with ID: {existing_company.data[0]['company_id']}")
+            return existing_company.data[0]["company_id"]
+        
+        # Company doesn't exist, create a new one
+        logger.info(f"Creating new company: {company_name}")
+        company_data = {
+            "company_name": company_name,
+            "company_website": company_website if company_website else None,
+            "created_at": datetime.now(timezone.utc).isoformat()
+        }
+        
+        logger.info(f"Inserting company data: {company_data}")
         response = supabase.table("companies") \
             .insert(company_data) \
             .execute()
-        return response.data[0]["company_id"]
+        
+        if not response.data:
+            logger.error("Company insertion returned no data")
+            raise Exception("Company insertion failed - no data returned")
+            
+        new_company_id = response.data[0]["company_id"]
+        logger.info(f"Successfully created company with ID: {new_company_id}")
+        return new_company_id
+
     except Exception as e:
-        logger.error(f"Error inserting company: {e}")
-        raise HTTPException(status_code=500, detail="Database error on company insertion.")
+        logger.error(f"Error in get_or_create_company: {str(e)}")
+        logger.error(f"Full error details: {traceback.format_exc()}")
+        logger.error(f"Company data being processed: name='{company_name}', website='{company_website}'")
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Database error on company insertion. Error: {str(e)}"
+        )
 
 
 def extract_seek_location(job: Dict[str, Any]) -> Optional[str]:
@@ -220,25 +239,61 @@ async def process_job(request: Request):
             contact_email = None  # LinkedIn typically doesn't provide contact email
         elif source_platform == "indeed":
             job_id = job.get("jobKey")  # Indeed uses 'jobKey' field
+            logger.info(f"Processing Indeed job with ID: {job_id}")
             
             # Extract company info from the nested company object
             company_info = job.get("company", {})
-            company_name = company_info.get("companyName", "Unknown Company")
-            company_website = company_info.get("companyOverviewLink")
+            logger.info(f"Raw company info from Indeed: {company_info}")
+            
+            # Get company name, with fallbacks
+            company_name = None
+            if isinstance(company_info, dict):
+                company_name = (
+                    company_info.get("companyName") or 
+                    company_info.get("name") or 
+                    job.get("companyName", "Unknown Company")
+                )
+            else:
+                company_name = job.get("companyName", "Unknown Company")
+            
+            logger.info(f"Extracted company name: {company_name}")
+            
+            # Get company website, with fallbacks
+            company_website = None
+            if isinstance(company_info, dict):
+                company_website = (
+                    company_info.get("companyOverviewLink") or 
+                    company_info.get("companyReviewLink") or 
+                    None
+                )
+            logger.info(f"Extracted company website: {company_website}")
             
             job_title = job.get("title", "")
             formatted_location = job.get("formattedLocation", "")
+            logger.info(f"Job title: {job_title}, Location: {formatted_location}")
             
             # Parse location from formattedLocation
             location_parts = formatted_location.split(" ") if formatted_location else []
-            location_city = " ".join(location_parts[:-1]) if len(location_parts) > 1 else formatted_location
-            location_state = location_parts[-1] if len(location_parts) > 1 else None
+            if len(location_parts) > 1:
+                location_city = " ".join(location_parts[:-1])  # Everything except last part
+                location_state = location_parts[-1]  # Last part is state
+            else:
+                location_city = formatted_location
+                location_state = None
             location_country = "AU"  # Default to AU for Indeed Australia
+            
+            logger.info(f"Parsed location - City: {location_city}, State: {location_state}, Country: {location_country}")
             
             # Extract salary information
             salary_info = job.get("salary", {})
-            salary_min = salary_info.get("salaryMin", None)
-            salary_max = salary_info.get("salaryMax", None)
+            if isinstance(salary_info, dict):
+                salary_min = salary_info.get("salaryMin", None)
+                salary_max = salary_info.get("salaryMax", None)
+            else:
+                salary_min = None
+                salary_max = None
+            
+            logger.info(f"Salary range: {salary_min} - {salary_max}")
             
             job_url = job.get("indeedJobLink", "")
             contact_email = None  # Indeed typically doesn't provide contact email

@@ -238,65 +238,46 @@ async def process_job(request: Request):
             job_url = job.get("link") or job.get("applyUrl", "")  # LinkedIn uses 'link' field
             contact_email = None  # LinkedIn typically doesn't provide contact email
         elif source_platform == "indeed":
-            job_id = job.get("jobKey")  # Indeed uses 'jobKey' field
+            # Log raw Indeed data for debugging
+            logger.info(f"Processing job from source: {source_platform}")
+            
+            # Extract job ID from the new Indeed format
+            job_id = (
+                job.get("jobkey") or           # New Indeed format
+                job.get("jobId") or            # Alternative format
+                job.get("jk") or               # URL parameter format
+                generate_job_hash(              # Generate hash as last resort
+                    job.get("company", "Unknown Company"),
+                    job.get("displayTitle", ""),
+                    job.get("formattedLocation", "")
+                )
+            )
             logger.info(f"Processing Indeed job with ID: {job_id}")
             
-            # Extract company info from the nested company object
-            company_info = job.get("company", {})
-            logger.info(f"Raw company info from Indeed: {company_info}")
+            # Extract job details using new field names
+            job_title = job.get("displayTitle") or job.get("title", "")
+            company_name = job.get("company", "Unknown Company")
+            logger.info(f"Raw company info from Indeed: {company_name}")
             
-            # Get company name, with fallbacks
-            company_name = None
-            if isinstance(company_info, dict):
-                company_name = (
-                    company_info.get("companyName") or 
-                    company_info.get("name") or 
-                    job.get("companyName", "Unknown Company")
-                )
-            else:
-                company_name = job.get("companyName", "Unknown Company")
+            # Location handling
+            location_city = job.get("jobLocationCity") or job.get("formattedLocation", "").split()[0]
+            location_state = job.get("jobLocationState")
+            location_country = "AU"  # Default to Australia based on the data
             
-            logger.info(f"Extracted company name: {company_name}")
+            # Salary handling - check both new and old formats
+            salary_info = job.get("salarySnippet", {})
+            salary_text = salary_info.get("text", "") if salary_info else ""
+            salary_min, salary_max = parse_salary_range(salary_text) if salary_text else (None, None)
             
-            # Get company website, with fallbacks
-            company_website = None
-            if isinstance(company_info, dict):
-                company_website = (
-                    company_info.get("companyOverviewLink") or 
-                    company_info.get("companyReviewLink") or 
-                    None
-                )
-            logger.info(f"Extracted company website: {company_website}")
+            # Job URL handling
+            job_url = (
+                job.get("link") or 
+                job.get("clickLoggingUrl") or 
+                job.get("noJsUrl", "")
+            )
             
-            job_title = job.get("title", "")
-            formatted_location = job.get("formattedLocation", "")
-            logger.info(f"Job title: {job_title}, Location: {formatted_location}")
-            
-            # Parse location from formattedLocation
-            location_parts = formatted_location.split(" ") if formatted_location else []
-            if len(location_parts) > 1:
-                location_city = " ".join(location_parts[:-1])  # Everything except last part
-                location_state = location_parts[-1]  # Last part is state
-            else:
-                location_city = formatted_location
-                location_state = None
-            location_country = "AU"  # Default to AU for Indeed Australia
-            
-            logger.info(f"Parsed location - City: {location_city}, State: {location_state}, Country: {location_country}")
-            
-            # Extract salary information
-            salary_info = job.get("salary", {})
-            if isinstance(salary_info, dict):
-                salary_min = salary_info.get("salaryMin", None)
-                salary_max = salary_info.get("salaryMax", None)
-            else:
-                salary_min = None
-                salary_max = None
-            
-            logger.info(f"Salary range: {salary_min} - {salary_max}")
-            
-            job_url = job.get("indeedJobLink", "")
-            contact_email = None  # Indeed typically doesn't provide contact email
+            # Contact info is typically not provided in Indeed format
+            contact_email = None
         else:
             # Handle original/default format
             job_id = (job.get("job_id") or job.get("jobID") or 

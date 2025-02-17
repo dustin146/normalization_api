@@ -259,6 +259,15 @@ async def process_job(request: Request):
             company_name = job.get("company", "Unknown Company")
             logger.info(f"Raw company info from Indeed: {company_name}")
             
+            # Company website - try to extract from company details or branding
+            company_details = job.get("companyDetails", {})
+            company_branding = job.get("companyBrandingAttributes", {})
+            company_website = (
+                company_details.get("website") or
+                company_branding.get("websiteUrl") or
+                None
+            )
+            
             # Location handling
             location_city = job.get("jobLocationCity") or job.get("formattedLocation", "").split()[0]
             location_state = job.get("jobLocationState")

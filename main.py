@@ -122,6 +122,7 @@ def generate_job_hash(company_name: str, job_title: str, location_city: Optional
 def get_or_create_company(company_name: str, company_website: Optional[str]) -> Optional[int]:
     """
     Return company_id if found, or insert a new record and return its company_id.
+    Handles minor name variations and checks company website to prevent duplicates.
     """
     if not company_name or not isinstance(company_name, str):
         logger.warning(f"Invalid company_name: {company_name}")
@@ -132,35 +133,54 @@ def get_or_create_company(company_name: str, company_website: Optional[str]) -> 
         logger.warning("Empty company_name after stripping whitespace")
         return None
 
+    # Normalize company name by removing common suffixes
+    normalized_name = re.sub(r"\b(Inc|LLC|Ltd|Pty Ltd|Corp|Co)\.?$", "", company_name, flags=re.IGNORECASE).strip()
+
     try:
-        # First try to find existing company
-        logger.info(f"Checking for existing company: {company_name}")
-        existing_company = supabase.table("companies") \
-            .select("company_id") \
-            .eq("company_name", company_name) \
+        # Step 1: Check if a company with this exact name or normalized name already exists
+        query = supabase.table("companies") \
+            .select("company_id, company_name, company_website") \
+            .or_(f"company_name.eq.{company_name},company_name.eq.{normalized_name}") \
             .execute()
-        
-        if existing_company.data:
-            logger.info(f"Found existing company with ID: {existing_company.data[0]['company_id']}")
-            return existing_company.data[0]["company_id"]
-        
-        # Company doesn't exist, create a new one
+
+        # If we find an exact match, return it
+        if query.data:
+            for company in query.data:
+                if company_website and company["company_website"]:
+                    if company_website.strip().lower() == company["company_website"].strip().lower():
+                        logger.info(f"Found existing company by website match: {company['company_id']}")
+                        return company["company_id"]
+                else:
+                    logger.info(f"Found existing company by name match: {company['company_id']}")
+                    return company["company_id"]
+
+        # Step 2: If no exact name match, check for a website match
+        if company_website:
+            query = supabase.table("companies") \
+                .select("company_id") \
+                .eq("company_website", company_website.strip()) \
+                .execute()
+
+            if query.data:
+                logger.info(f"Found existing company by website: {query.data[0]['company_id']}")
+                return query.data[0]["company_id"]
+
+        # Step 3: If no match found, create a new company
         logger.info(f"Creating new company: {company_name}")
         company_data = {
             "company_name": company_name,
             "company_website": company_website if company_website else None,
             "created_at": datetime.now(timezone.utc).isoformat()
         }
-        
-        logger.info(f"Inserting company data: {company_data}")
+
         response = supabase.table("companies") \
             .insert(company_data) \
             .execute()
-        
+
         if not response.data:
             logger.error("Company insertion returned no data")
             raise Exception("Company insertion failed - no data returned")
-            
+
         new_company_id = response.data[0]["company_id"]
         logger.info(f"Successfully created company with ID: {new_company_id}")
         return new_company_id

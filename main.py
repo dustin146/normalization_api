@@ -137,39 +137,46 @@ def get_or_create_company(company_name: str, company_website: Optional[str]) -> 
     normalized_name = re.sub(r"\b(Inc|LLC|Ltd|Pty Ltd|Corp|Co)\.?$", "", company_name, flags=re.IGNORECASE).strip()
 
     try:
-        # Step 1: Check if a company with this exact name or normalized name already exists
+        # Step 1: Check for exact company name match (case insensitive)
         query = supabase.table("companies") \
             .select("company_id, company_name, company_website") \
-            .or_(f"company_name.eq.{company_name},company_name.eq.{normalized_name}") \
+            .ilike("company_name", company_name) \
             .execute()
 
-        # If we find an exact match, return it
-        if query.data:
-            for company in query.data:
-                if company_website and company["company_website"]:
-                    if company_website.strip().lower() == company["company_website"].strip().lower():
-                        logger.info(f"Found existing company by website match: {company['company_id']}")
-                        return company["company_id"]
-                else:
-                    logger.info(f"Found existing company by name match: {company['company_id']}")
-                    return company["company_id"]
+        if not query.data:
+            # Step 2: Check for normalized name match
+            query = supabase.table("companies") \
+                .select("company_id, company_name, company_website") \
+                .ilike("company_name", normalized_name) \
+                .execute()
 
-        # Step 2: If no exact name match, check for a website match
+        # If we find a match by name, return it
+        if query.data:
+            company = query.data[0]
+            if company_website and company["company_website"]:
+                if company_website.strip().lower() == company["company_website"].strip().lower():
+                    logger.info(f"Found existing company by website match: {company['company_id']}")
+                    return company["company_id"]
+            else:
+                logger.info(f"Found existing company by name match: {company['company_id']}")
+                return company["company_id"]
+
+        # Step 3: If no name match, check for website match
         if company_website:
             query = supabase.table("companies") \
                 .select("company_id") \
-                .eq("company_website", company_website.strip()) \
+                .ilike("company_website", company_website.strip()) \
                 .execute()
 
             if query.data:
                 logger.info(f"Found existing company by website: {query.data[0]['company_id']}")
                 return query.data[0]["company_id"]
 
-        # Step 3: If no match found, create a new company
+        # Step 4: If no match found, create a new company
         logger.info(f"Creating new company: {company_name}")
         company_data = {
             "company_name": company_name,
-            "company_website": company_website if company_website else None,
+            "company_website": company_website.strip() if company_website else None,
             "created_at": datetime.now(timezone.utc).isoformat()
         }
 
@@ -189,6 +196,20 @@ def get_or_create_company(company_name: str, company_website: Optional[str]) -> 
         logger.error(f"Error in get_or_create_company: {str(e)}")
         logger.error(f"Full error details: {traceback.format_exc()}")
         logger.error(f"Company data being processed: name='{company_name}', website='{company_website}'")
+        
+        # If it's a duplicate key error, try to fetch the existing record
+        if isinstance(e, Exception) and "duplicate key value" in str(e):
+            try:
+                query = supabase.table("companies") \
+                    .select("company_id") \
+                    .eq("company_name", company_name) \
+                    .execute()
+                if query.data:
+                    logger.info(f"Recovered existing company ID after duplicate error: {query.data[0]['company_id']}")
+                    return query.data[0]["company_id"]
+            except Exception as recovery_error:
+                logger.error(f"Failed to recover from duplicate error: {str(recovery_error)}")
+
         raise HTTPException(
             status_code=500, 
             detail=f"Database error on company insertion. Error: {str(e)}"

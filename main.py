@@ -273,8 +273,9 @@ async def process_job(request: Request):
             salary_min = None
             salary_max = None
             
-            # Job URL would need to be constructed or provided elsewhere
-            job_url = ""
+            # Construct Seek job URL using advertiser ID
+            # Format: https://www.seek.com.au/job/{advertiser_id}
+            job_url = f"https://www.seek.com.au/job/{job_id}" if job_id else ""
             
             # Contact info not directly available in current structure
             contact_email = None

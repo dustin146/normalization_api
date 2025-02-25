@@ -248,21 +248,36 @@ async def process_job(request: Request):
         
         # Extract job_id based on source
         if source_platform == "seek":
-            job_id = job.get("id") or job.get("jobLink") or job.get("applyLink")
-            company_info = job.get("advertiser") or job.get("companyProfile") or {}
-            company_name = company_info.get("name", "Unknown Company")
-            company_website = company_info.get("website")
-            job_title = job.get("title", "")
-            location_info = job.get("joblocationInfo", {})
-            location_city = location_info.get("suburb") or location_info.get("location")
-            location_state = location_info.get("area")
-            location_country = location_info.get("countryCode", "AU")
-            salary_info = job.get("salary", {})
-            salary_amount = salary_info.get("amount", "")
-            salary_min, salary_max = parse_salary_range(salary_amount) if salary_amount else (None, None)
-            job_url = job.get("jobLink") or job.get("applyLink", "")
-            contacts = job.get("contacts", [])
-            contact_email = next((contact["value"] for contact in contacts if contact.get("type", "").lower() == "email"), None)
+            # Log raw data for debugging
+            logger.info(f"Raw Seek job data: {job}")
+            
+            # Get content and advertiser sections
+            content = job.get("content", {}) if isinstance(job.get("content"), dict) else {}
+            advertiser = job.get("advertiser", {}) if isinstance(job.get("advertiser"), dict) else {}
+            
+            # Extract basic job info
+            job_id = str(advertiser.get("id", ""))
+            company_name = str(advertiser.get("name", "Unknown Company"))
+            company_website = None  # Not provided in current Seek data structure
+            
+            # Extract job details from content
+            job_title = str(content.get("jobHook", ""))
+            
+            # Get location from the first location in locations list or default empty
+            location_info = {}  # Location info not directly available in current structure
+            location_city = ""  # Would need to be parsed from content if needed
+            location_state = ""  # Would need to be parsed from content if needed
+            location_country = "AU"  # Default to AU as per requirements
+            
+            # Salary info not directly available in current structure
+            salary_min = None
+            salary_max = None
+            
+            # Job URL would need to be constructed or provided elsewhere
+            job_url = ""
+            
+            # Contact info not directly available in current structure
+            contact_email = None
         elif source_platform == "linkedin":
             job_id = job.get("id")  # LinkedIn uses 'id' field
             company_name = job.get("companyName", "Unknown Company")
